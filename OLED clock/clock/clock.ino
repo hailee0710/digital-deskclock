@@ -1,8 +1,9 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-
-#include <WiFi.h>
+#include <ESP8266WiFi.h>
+#include <WiFiClient.h>
+//#include <WiFiUdp.h>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 
@@ -23,8 +24,8 @@ NTPClient timeClient(ntpUDP, "pool.ntp.org");
 String weekDays[7] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 String months[12] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
 
-const int ledPin = D10;   // Change this to your actual LED pin number on the Xiao ESP32 S3
-const int buzzerPin = D9; // Change this to your actual buzzer pin number on the Xiao ESP32 S3
+const int ledPin = 1;   // Change this to your actual LED pin number on the Xiao ESP32 S3
+const int buzzerPin = 3; // Change this to your actual buzzer pin number on the Xiao ESP32 S3
 
 // Define the desired LED activation and deactivation times
 const int activateHour = 10;    // Set your activation hour (in 24 Hour Format)
@@ -83,13 +84,23 @@ void clockDisplay() {
   int currentYear = ptm->tm_year + 1900;
 
   display.clearDisplay();
-  display.setTextSize(2);
+  display.setTextSize(4);
   display.setTextColor(SSD1306_WHITE);
-  display.setCursor(18, 10);
-  display.print(String(currentHour) + ":" + String(currentMinute) + " " + am_pm);
-   display.setTextSize(2);
-  display.setCursor(9, 33);
-  display.println(String(weekDay) + ";" + String(monthDay) + "-" + String(currentMonthName));//+"-"+String(currentYear)
+  display.setCursor(9, 5);
+  String displayHour = String(currentHour);
+  String displayMinute = String(currentMinute);
+
+  if (currentHour < 10) {
+    displayHour = '0' + displayHour;
+  }
+  if (currentMinute < 10) {
+    displayMinute = '0' + displayMinute;
+  }
+  display.print(displayHour + ":" + displayMinute + " " + am_pm);
+  
+  display.setTextSize(2);
+  display.setCursor(10, 40);
+  display.println(String(weekDay) + " " + String(monthDay) + "-" + String(currentMonthName));//+"-"+String(currentYear)
   
   display.setTextSize(1);
   display.setTextColor(WHITE);
@@ -97,13 +108,13 @@ void clockDisplay() {
   display.print(currentSecond);
 }
 
-void textScroll() {
-  display.setTextSize(1);
-  display.setCursor(x,55);
-  display.print(intro);
-  x=x-1;
-  if(x < minX) x = display.width();
-}
+// void textScroll() {
+//   display.setTextSize(1);
+//   display.setCursor(x,55);
+//   display.print(intro);
+//   x=x-1;
+//   if(x < minX) x = display.width();
+// }
 
 void deviceActivation(){
  timeClient.update();
@@ -150,7 +161,7 @@ void setup() {
 
 void loop() {  
   clockDisplay();
-  textScroll();
+  // textScroll();
   display.display();
   deviceActivation();
 
