@@ -11,6 +11,7 @@
 #define OLED_RESET -1
 #define SCREEN_ADDRESS 0x3C
 
+//link: https://robu.in/tim-e-a-digital-clock-using-seeed-studio-xiao-esp32s3/
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 const char *ssid = "Hailee";//SET UP YOUR Wi-Fi NAME
