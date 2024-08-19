@@ -24,8 +24,8 @@ NTPClient timeClient(ntpUDP, "pool.ntp.org");
 String weekDays[7] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 String months[12] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
 
-const int ledPin = 1;   // Change this to your actual LED pin number on the Xiao ESP32 S3
-const int buzzerPin = 3; // Change this to your actual buzzer pin number on the Xiao ESP32 S3
+const int ledPin = 13;   // Change this to your actual LED pin number on the Xiao ESP32 S3
+const int buzzerPin = 12; // Change this to your actual buzzer pin number on the Xiao ESP32 S3
 
 // Define the desired LED activation and deactivation times
 const int activateHour = 10;    // Set your activation hour (in 24 Hour Format)
