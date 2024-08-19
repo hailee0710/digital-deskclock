@@ -12,8 +12,8 @@
 //ESP82266 Board Manager - https://arduino.esp8266.com/stable/package_esp8266com_index.json
 
 // WIFI INFORMATION
-#define WIFI_SSID "YOUR WIFI SSIDE"
-#define WIFI_PASSWORD "YOUR WIFI PASSWORD"
+#define WIFI_SSID "Hailee"
+#define WIFI_PASSWORD "07102010"
 #define JSON_MEMORY_BUFFER 1024*2
 
 // DISPLAY PINS
@@ -23,8 +23,8 @@
 #define TFT_BL 5
 
 // You can get API KEY and HOST KEY from RapidAPI, Search weatherapi.com and subscribe.
-const char* API_KEY = "YOUR API KEY";
-const char* API_HOST = "YOUR HOST KEY";
+const char* API_KEY = "3e0b95af61msha030984bdb94f50p1e06fajsne24c3c361f97";
+const char* API_HOST = "weatherapi-com.p.rapidapi.com";
 
 // Display and WiFiUdp 
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
