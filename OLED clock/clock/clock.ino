@@ -3,7 +3,6 @@
 #include <Adafruit_SSD1306.h>
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
-//#include <WiFiUdp.h>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 
@@ -19,7 +18,7 @@ const char *ssid = "Hailee";//SET UP YOUR Wi-Fi NAME
 const char *password = "07102010";//SET UP YOUR Wi-Fi PASSWORD
 
 WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "pool.ntp.org");
+NTPClient timeClient(ntpUDP, "asia.pool.ntp.org", 25200, 3600);
 
 String weekDays[7] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 String months[12] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
@@ -84,9 +83,9 @@ void clockDisplay() {
   int currentYear = ptm->tm_year + 1900;
 
   display.clearDisplay();
-  display.setTextSize(4);
+  display.setTextSize(4.2);
   display.setTextColor(SSD1306_WHITE);
-  display.setCursor(9, 5);
+  display.setCursor(1, 3);
   String displayHour = String(currentHour);
   String displayMinute = String(currentMinute);
 
@@ -98,14 +97,9 @@ void clockDisplay() {
   }
   display.print(displayHour + ":" + displayMinute + " " + am_pm);
   
-  display.setTextSize(2);
-  display.setCursor(10, 40);
+  display.setTextSize(1.5);
+  display.setCursor(10, 55);
   display.println(String(weekDay) + " " + String(monthDay) + "-" + String(currentMonthName));//+"-"+String(currentYear)
-  
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-  display.setCursor(115, 0);
-  display.print(currentSecond);
 }
 
 // void textScroll() {
