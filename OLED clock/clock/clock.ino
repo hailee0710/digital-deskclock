@@ -45,9 +45,7 @@ const int deactivateMinute = 39;  // Set your deactivation minute
 char intro[] = "GIVE THIS VIDEO A LIKE,IF YOU ENJOYED | ROBU.IN";
 int x, minX;
 
-int currentHour;
-int currentMinute;
-int currentSecond;
+String temp;
 
 bool deviceActive = false;
 
@@ -78,9 +76,9 @@ void wifiConnect() {
 
 void clockDisplay() {
   timeClient.update();
-  currentHour = timeClient.getHours();
-  currentMinute = timeClient.getMinutes();
-  currentSecond = timeClient.getSeconds();
+  int currentHour = timeClient.getHours();
+  int currentMinute = timeClient.getMinutes();
+  int currentSecond = timeClient.getSeconds();
   // String am_pm = (currentHour < 12) ? "AM" : "PM";
   // if (currentHour == 0) {
   //   currentHour = 12; // 12 AM
@@ -117,6 +115,15 @@ void clockDisplay() {
   display.setTextSize(2);
   display.setCursor(10, 50);
   display.println(String(monthDay) + "-" + String(currentMonthName));  //+"-"+String(currentYear)
+  display.setTextSize(2);
+  display.setCursor(80, 50);
+  if (temp != "") {
+    display.print(temp);
+    display.print(char(247));
+    display.print("C");
+  } else {
+    display.print("---");
+  }
 }
 
 // void textScroll() {
@@ -129,8 +136,8 @@ void clockDisplay() {
 
 void deviceActivation() {
   timeClient.update();
-  currentHour = timeClient.getHours();
-  currentMinute = timeClient.getMinutes();
+  int currentHour = timeClient.getHours();
+  int currentMinute = timeClient.getMinutes();
 
   if ((currentHour > activateHour || (currentHour == activateHour && currentMinute >= activateMinute)) && (currentHour < deactivateHour || (currentHour == deactivateHour && currentMinute < deactivateMinute))) {
     deviceActive = true;
@@ -155,17 +162,18 @@ void setup() {
   timeClient.begin();
   timeClient.setTimeOffset(25200);
   timeClient.update();
-  currentHour = timeClient.getHours();
-  currentMinute = timeClient.getMinutes();
+  int currentHour = timeClient.getHours();
+  int currentMinute = timeClient.getMinutes();
   if ((currentHour > activateHour || (currentHour == activateHour && currentMinute >= activateMinute)) && (currentHour < deactivateHour || (currentHour == deactivateHour && currentMinute < deactivateMinute))) {
     deviceActive = true;
     digitalWrite(ledPin, HIGH);  // Activate LED
   }
+  fetchTemp();
 }
 
 void loop() {
   clockDisplay();
-  fetchTemp();
+
   // textScroll();
   display.display();
   deviceActivation();
@@ -183,39 +191,24 @@ void loop() {
 void fetchTemp() {
   WiFiClientSecure client;
   HTTPClient https;
-  int temp;
-  timeClient.update();
-  if (currentHour == 6 || currentHour == 14) {
-    if (currentMinute == 12 & currentSecond < 30) {
-      client.setInsecure();
-      https.useHTTP10(true);
-      if (https.begin(client, weather_url.c_str())) {
-        int httpCode = https.GET();
-        if (httpCode > 0) {
-          if (httpCode == 200) {
-            DynamicJsonDocument doc(JSON_MEMORY_BUFFER);
-            DeserializationError error = deserializeJson(doc, https.getStream());
-            display.print(https.getStream());
-            if (error) {
-              display.println("deserialization error");
-              display.println(error.f_str());
-              temp = -1;
-            } else {
-              temp = doc["main"]["temp"].as<int>();
-            }
-          }
+  client.setInsecure();
+  https.useHTTP10(true);
+  if (https.begin(client, weather_url.c_str())) {
+    int httpCode = https.GET();
+    if (httpCode > 0) {
+      if (httpCode == 200) {
+        DynamicJsonDocument doc(JSON_MEMORY_BUFFER);
+        DeserializationError error = deserializeJson(doc, https.getStream());
+        display.print(https.getStream());
+        if (error) {
+          display.println("deserialization error");
+          display.println(error.f_str());
+          temp = "";
+        } else {
+          temp = String(doc["main"]["temp"].as<int>());
         }
       }
-      https.end();
-      display.setTextSize(2);
-      display.setCursor(80, 50);
-      display.print(String(temp));
-      display.print(char(247));
-      display.print("C");
     }
-  } else {
-    display.setTextSize(2);
-    display.setCursor(80, 50);
-    display.print("---"); 
   }
+  https.end();
 }
