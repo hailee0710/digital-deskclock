@@ -33,9 +33,6 @@ NTPClient timeClient(ntpUDP, "0.vn.pool.ntp.org");
 String weekDays[7] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
 String months[12] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
 
-const int ledPin = 13;     // Change this to your actual LED pin number on the Xiao ESP32 S3
-const int buzzerPin = 12;  // Change this to your actual buzzer pin number on the Xiao ESP32 S3
-
 // Define the desired LED activation and deactivation times
 const int activateHour = 10;      // Set your activation hour (in 24 Hour Format)
 const int activateMinute = 38;    // Set your activation minute
@@ -65,9 +62,6 @@ void setup() {
   display.clearDisplay();
   display.display();  // Initialize and clear the display
 
-  pinMode(ledPin, OUTPUT);     // Initialize the LED pin
-  pinMode(buzzerPin, OUTPUT);  // Initialize the buzzer pin
-
   wifiConnect();
 
   timeClient.begin();
@@ -88,16 +82,6 @@ void loop() {
   if (buttonState == LOW) { // Button is pressed (LOW because of pull-up)
     clockDisplay();
     delay(3000);
-  }
-    
-  deviceActivation();
-
-  static bool previousDeviceActive = false;
-  if (deviceActive != previousDeviceActive) {
-    previousDeviceActive = deviceActive;
-    digitalWrite(buzzerPin, HIGH);  // Activate Buzzer
-    delay(1000);                    // Keep the buzzer on for 1 second
-    digitalWrite(buzzerPin, LOW);   // Deactivate Buzzer
   }
 }
 
@@ -186,20 +170,6 @@ void clockDisplay() {
 //   x=x-1;
 //   if(x < minX) x = display.width();
 // }
-
-void deviceActivation() {
-  timeClient.update();
-  int currentHour = timeClient.getHours();
-  int currentMinute = timeClient.getMinutes();
-
-  if ((currentHour > activateHour || (currentHour == activateHour && currentMinute >= activateMinute)) && (currentHour < deactivateHour || (currentHour == deactivateHour && currentMinute < deactivateMinute))) {
-    deviceActive = true;
-    digitalWrite(ledPin, HIGH);  // Activate LED
-  } else {
-    deviceActive = false;
-    digitalWrite(ledPin, LOW);  // Deactivate LED
-  }
-}
 
 // Getting tempurature from API using Https request
 void fetchTemp() {
