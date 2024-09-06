@@ -89,9 +89,7 @@ void loop() {
     clockDisplay();
     delay(3000);
   }
-
-  // textScroll();
-  display.display();
+    
   deviceActivation();
 
   static bool previousDeviceActive = false;
