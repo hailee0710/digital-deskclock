@@ -18,8 +18,8 @@
 //link: https://robu.in/tim-e-a-digital-clock-using-seeed-studio-xiao-esp32s3/
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-const char *ssid = "HL";              //SET UP YOUR Wi-Fi NAME
-const char *password = "1234567890";  //SET UP YOUR Wi-Fi PASSWORD
+const char *ssid = "Hailee";              //SET UP YOUR Wi-Fi NAME
+const char *password = "07102010";  //SET UP YOUR Wi-Fi PASSWORD
 
 float lat = 20.98;
 float lon = 105.78;
@@ -46,6 +46,7 @@ char intro[] = "GIVE THIS VIDEO A LIKE,IF YOU ENJOYED | ROBU.IN";
 int x, minX;
 
 String temp;
+String weather;
 
 bool deviceActive = false;
 
@@ -91,13 +92,12 @@ void clockDisplay() {
   struct tm *ptm = gmtime(&epochTime);
   int monthDay = ptm->tm_mday;
   int currentMonth = ptm->tm_mon + 1;
-  String currentMonthName = months[currentMonth - 1];
   int currentYear = ptm->tm_year + 1900;
 
   display.clearDisplay();
   display.setTextSize(4);
   display.setTextColor(SSD1306_WHITE);
-  display.setCursor(1, 3);
+  display.setCursor(0, 16);
   String displayHour = String(currentHour);
   String displayMinute = String(currentMinute);
 
@@ -113,14 +113,14 @@ void clockDisplay() {
     display.print(displayHour + ":" + displayMinute);
   }
   display.setTextSize(2);
-  display.setCursor(10, 50);
-  display.println(String(monthDay) + "-" + String(currentMonthName));  //+"-"+String(currentYear)
+  display.setCursor(45, 0);
+  display.print(String(monthDay) + "/" + String(currentMonth));  //+"-"+String(currentYear) 
   display.setTextSize(2);
-  display.setCursor(80, 50);
+  display.setCursor(0, 50);
+  display.print(weather+"|");
   if (temp != "") {
     display.print(temp);
     display.print(char(247));
-    display.print("C");
   } else {
     display.print("---");
   }
@@ -204,8 +204,10 @@ void fetchTemp() {
           display.println("deserialization error");
           display.println(error.f_str());
           temp = "";
+          weather = "";
         } else {
           temp = String(doc["main"]["temp"].as<int>());
+          weather = String (doc["weather"][0]["main"]);
         }
       }
     }
