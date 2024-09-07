@@ -54,11 +54,7 @@ void setup() {
   pinMode(BUTTON_PIN, INPUT_PULLUP);  // Configure button pin as input with internal pull-up
 
   // Initialize the OLED display
-  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-    Serial.println(F("SSD1306 allocation failed"));
-    for (;;)
-      ;  // Don't proceed, loop forever
-  }
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   display.clearDisplay();
   display.display();  // Initialize and clear the display
 
@@ -69,19 +65,19 @@ void setup() {
   timeClient.update();
   int currentHour = timeClient.getHours();
   int currentMinute = timeClient.getMinutes();
-  if ((currentHour > activateHour || (currentHour == activateHour && currentMinute >= activateMinute)) && (currentHour < deactivateHour || (currentHour == deactivateHour && currentMinute < deactivateMinute))) {
-    deviceActive = true;
-    digitalWrite(ledPin, HIGH);  // Activate LED
-  }
+  
   fetchTemp();
+  display.clearDisplay();
+  display.display();
+  clockDisplay();  // Initialize and clear the display
 }
 
 void loop() {
   buttonState = digitalRead(BUTTON_PIN); // Read the state of the button
 
   if (buttonState == LOW) { // Button is pressed (LOW because of pull-up)
+    fetchTemp();
     clockDisplay();
-    delay(3000);
   }
 }
 
@@ -132,7 +128,7 @@ void clockDisplay() {
   display.clearDisplay();
   display.setTextSize(4);
   display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 16);
+  display.setCursor(0, 18);
   String displayHour = String(currentHour);
   String displayMinute = String(currentMinute);
 
@@ -148,10 +144,10 @@ void clockDisplay() {
     display.print(displayHour + ":" + displayMinute);
   }
   display.setTextSize(2);
-  display.setCursor(45, 0);
+  display.setCursor(45, 50);
   display.print(String(monthDay) + "/" + String(currentMonth));  //+"-"+String(currentYear)
   display.setTextSize(2);
-  display.setCursor(0, 50);
+  display.setCursor(0, 0);
   display.print(weather + "|");
   if (temp != "") {
     display.print(temp);
@@ -159,6 +155,8 @@ void clockDisplay() {
   } else {
     display.print("---");
   }
+  display.display();
+  delay(5000);
   display.clearDisplay(); // Clear the display after 3 seconds
   display.display(); // Turn off OLED
 }
