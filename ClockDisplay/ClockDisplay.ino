@@ -51,11 +51,11 @@ int year;
 String temp;
 String weather;
 
-#define BUTTON_PIN D3 
-#define BL_PIN D0 // Button connected to D3 (GPIO0)
+#define BUTTON_PIN D3
+#define BL_PIN D0  // Button connected to D3 (GPIO0)
 int buttonState = 0;
 bool displayOn = true;
-int brightness = 255;         // Full brightness (255 = 100% duty cycle)
+int brightness = 255;  // Full brightness (255 = 100% duty cycle)
 bool dimmed = false;
 
 // Array for days and months
@@ -118,10 +118,9 @@ void setup(void) {
 void loop() {
   // Update time.
   timeClient.update();
-
+  currentTime();
   // Fetching weather after delay
   if ((millis() - lastTime) > fetch_delay) {
-    currentTime();
     fetchTemp();
     lastTime = millis();
   }
@@ -132,19 +131,18 @@ void loop() {
     // Displaying items.
     delay(200);
     dimmed = !dimmed;
-    
+
     // Set brightness based on the dimmed state
     if (dimmed) {
       brightness = 1;  // Dimmed brightness (adjust this value)
     } else {
-      brightness = 255; // Full brightness
+      brightness = 255;  // Full brightness
     }
 
     // Apply brightness to backlight
     analogWrite(BL_PIN, brightness);
     delay(200);
   }
-  
 }
 
 void display() {
