@@ -12,8 +12,8 @@
 //ESP82266 Board Manager - https://arduino.esp8266.com/stable/package_esp8266com_index.json
 
 // WIFI INFORMATION
-#define WIFI_SSID "Hailee"
-#define WIFI_PASSWORD "07102010"
+#define WIFI_SSID "HL"
+#define WIFI_PASSWORD "1234567890"
 #define JSON_MEMORY_BUFFER 1024 * 2
 
 // DISPLAY PINS
@@ -94,11 +94,15 @@ void setup(void) {
 
   // While connecting to wifi
   while (WiFi.status() != WL_CONNECTED) {
+    tft.drawBitmap(110, 20, wifi, 31, 24, ST77XX_WHITE);
     tft.setCursor(40, 90);
     tft.println("Connecting to ");
     tft.setCursor(40, 125);
     tft.print(WIFI_SSID);
     tft.println(loading);
+    if (loading.length() > 6) {
+      loading = "";
+    }
     loading += ".";
     delay(500);
   }
