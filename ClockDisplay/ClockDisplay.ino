@@ -176,8 +176,8 @@ void display() {
   tft.setTextSize(4);
   tft.setCursor(160, 45);
   tft.println(weekDay);
-  tft.setTextSize(3);
-  tft.setCursor(160, 85);
+  tft.setTextSize(2);
+  tft.setCursor(168, 88);
   tft.print(day);
   tft.print("/");
   tft.println(month);
