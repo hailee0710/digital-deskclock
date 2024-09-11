@@ -18,7 +18,7 @@
 //link: https://robu.in/tim-e-a-digital-clock-using-seeed-studio-xiao-esp32s3/
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-const char *ssid = "Hailee";              //SET UP YOUR Wi-Fi NAME
+const char *ssid = "Hailee";        //SET UP YOUR Wi-Fi NAME
 const char *password = "07102010";  //SET UP YOUR Wi-Fi PASSWORD
 
 float lat = 20.98;
@@ -33,9 +33,6 @@ NTPClient timeClient(ntpUDP, "0.vn.pool.ntp.org");
 String weekDays[7] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
 String months[12] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
 
-const int ledPin = 13;     // Change this to your actual LED pin number on the Xiao ESP32 S3
-const int buzzerPin = 12;  // Change this to your actual buzzer pin number on the Xiao ESP32 S3
-
 // Define the desired LED activation and deactivation times
 const int activateHour = 10;      // Set your activation hour (in 24 Hour Format)
 const int activateMinute = 38;    // Set your activation minute
@@ -49,6 +46,40 @@ String temp;
 String weather;
 
 bool deviceActive = false;
+
+#define BUTTON_PIN D3  // Button connected to D3 (GPIO0)
+int buttonState = 0;
+
+void setup() {
+  pinMode(BUTTON_PIN, INPUT_PULLUP);  // Configure button pin as input with internal pull-up
+
+  // Initialize the OLED display
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  display.clearDisplay();
+  display.display();  // Initialize and clear the display
+
+  wifiConnect();
+
+  timeClient.begin();
+  timeClient.setTimeOffset(25200);
+  timeClient.update();
+  int currentHour = timeClient.getHours();
+  int currentMinute = timeClient.getMinutes();
+  
+  fetchTemp();
+  display.clearDisplay();
+  display.display();
+  clockDisplay();  // Initialize and clear the display
+}
+
+void loop() {
+  buttonState = digitalRead(BUTTON_PIN); // Read the state of the button
+
+  if (buttonState == LOW) { // Button is pressed (LOW because of pull-up)
+    fetchTemp();
+    clockDisplay();
+  }
+}
 
 void wifiConnect() {
   display.setTextSize(2);
@@ -97,7 +128,7 @@ void clockDisplay() {
   display.clearDisplay();
   display.setTextSize(4);
   display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 16);
+  display.setCursor(0, 18);
   String displayHour = String(currentHour);
   String displayMinute = String(currentMinute);
 
@@ -113,17 +144,21 @@ void clockDisplay() {
     display.print(displayHour + ":" + displayMinute);
   }
   display.setTextSize(2);
-  display.setCursor(45, 0);
-  display.print(String(monthDay) + "/" + String(currentMonth));  //+"-"+String(currentYear) 
+  display.setCursor(45, 50);
+  display.print(String(monthDay) + "/" + String(currentMonth));  //+"-"+String(currentYear)
   display.setTextSize(2);
-  display.setCursor(0, 50);
-  display.print(weather+"|");
+  display.setCursor(0, 0);
+  display.print(weather + "|");
   if (temp != "") {
     display.print(temp);
     display.print(char(247));
   } else {
     display.print("---");
   }
+  display.display();
+  delay(5000);
+  display.clearDisplay(); // Clear the display after 3 seconds
+  display.display(); // Turn off OLED
 }
 
 // void textScroll() {
@@ -133,59 +168,6 @@ void clockDisplay() {
 //   x=x-1;
 //   if(x < minX) x = display.width();
 // }
-
-void deviceActivation() {
-  timeClient.update();
-  int currentHour = timeClient.getHours();
-  int currentMinute = timeClient.getMinutes();
-
-  if ((currentHour > activateHour || (currentHour == activateHour && currentMinute >= activateMinute)) && (currentHour < deactivateHour || (currentHour == deactivateHour && currentMinute < deactivateMinute))) {
-    deviceActive = true;
-    digitalWrite(ledPin, HIGH);  // Activate LED
-  } else {
-    deviceActive = false;
-    digitalWrite(ledPin, LOW);  // Deactivate LED
-  }
-}
-
-void setup() {
-
-  display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS);
-  display.clearDisplay();
-  display.display();  // Initialize and clear the display
-
-  pinMode(ledPin, OUTPUT);     // Initialize the LED pin
-  pinMode(buzzerPin, OUTPUT);  // Initialize the buzzer pin
-
-  wifiConnect();
-
-  timeClient.begin();
-  timeClient.setTimeOffset(25200);
-  timeClient.update();
-  int currentHour = timeClient.getHours();
-  int currentMinute = timeClient.getMinutes();
-  if ((currentHour > activateHour || (currentHour == activateHour && currentMinute >= activateMinute)) && (currentHour < deactivateHour || (currentHour == deactivateHour && currentMinute < deactivateMinute))) {
-    deviceActive = true;
-    digitalWrite(ledPin, HIGH);  // Activate LED
-  }
-  fetchTemp();
-}
-
-void loop() {
-  clockDisplay();
-
-  // textScroll();
-  display.display();
-  deviceActivation();
-
-  static bool previousDeviceActive = false;
-  if (deviceActive != previousDeviceActive) {
-    previousDeviceActive = deviceActive;
-    digitalWrite(buzzerPin, HIGH);  // Activate Buzzer
-    delay(1000);                    // Keep the buzzer on for 1 second
-    digitalWrite(buzzerPin, LOW);   // Deactivate Buzzer
-  }
-}
 
 // Getting tempurature from API using Https request
 void fetchTemp() {
@@ -199,15 +181,15 @@ void fetchTemp() {
       if (httpCode == 200) {
         DynamicJsonDocument doc(JSON_MEMORY_BUFFER);
         DeserializationError error = deserializeJson(doc, https.getStream());
-        display.print(https.getStream());
+        Serial.println(https.getStream());
         if (error) {
-          display.println("deserialization error");
-          display.println(error.f_str());
+          Serial.println("deserialization error");
+          Serial.println(error.f_str());
           temp = "";
           weather = "";
         } else {
           temp = String(doc["main"]["temp"].as<int>());
-          weather = String (doc["weather"][0]["main"]);
+          weather = String(doc["weather"][0]["main"]);
         }
       }
     }
