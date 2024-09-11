@@ -12,8 +12,8 @@
 //ESP82266 Board Manager - https://arduino.esp8266.com/stable/package_esp8266com_index.json
 
 // WIFI INFORMATION
-#define WIFI_SSID "HL"
-#define WIFI_PASSWORD "1234567890"
+#define WIFI_SSID "Hailee"
+#define WIFI_PASSWORD "07102010"
 #define JSON_MEMORY_BUFFER 1024 * 2
 
 // DISPLAY PINS
@@ -21,6 +21,9 @@
 #define TFT_DC 4
 #define TFT_RST 2
 #define TFT_BL 5
+
+#define ST77XX_LIME 0x07FF
+#define ST77XX_GRAY 0x8410
 
 // Display and WiFiUdp
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
@@ -64,7 +67,7 @@ String months[12] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "S
 
 // For delay in fetching weather data.
 unsigned long lastTime = 0;
-unsigned long fetch_delay = 5000000;
+unsigned long fetch_delay = 10800000;
 
 void setup(void) {
   pinMode(BUTTON_PIN, INPUT_PULLUP);  // Configure button pin as input with internal pull-up
@@ -94,7 +97,7 @@ void setup(void) {
 
   // While connecting to wifi
   while (WiFi.status() != WL_CONNECTED) {
-    tft.drawBitmap(110, 20, wifi, 31, 24, ST77XX_WHITE);
+    tft.drawBitmap(110, 35, wifi, 30, 30, ST77XX_WHITE);
     tft.setCursor(40, 90);
     tft.println("Connecting to ");
     tft.setCursor(40, 125);
@@ -119,6 +122,7 @@ void setup(void) {
   fetchTemp();
 }
 
+
 void loop() {
   // Update time.
   timeClient.update();
@@ -129,6 +133,7 @@ void loop() {
     lastTime = millis();
   }
   display();
+
   buttonState = digitalRead(BUTTON_PIN);  // Read the state of the button
 
   if (buttonState == LOW) {  // Button is pressed (LOW because of pull-up)
@@ -150,54 +155,123 @@ void loop() {
 }
 
 void display() {
-  // default font size = 6x8px
-  int font_w = 6;
-  int font_h = 8;
 
-  // UI size
-  int time_size = 6;
-  int alt_size = 2;
-  int day_size = 3;
-
-  // Display WxH
-  int display_w = 240;
-  int display_h = 240;
-
-  // Distance between items
-  int padding = 8;
-
-  tft.setTextSize(time_size);  // ie. 6x8 * 5 = 30x40
   tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+  //Time
+  tft.setTextSize(13);  // ie. 6x8 * 5 = 30x40
+  tft.setCursor(0, 5);
+  tft.println(hour);
+  tft.setCursor(0, 120);
+  tft.println(minute);
 
-  // X and Y of time on screen
-  int time_x = (display_w / 2) - ((font_w * time_size) * 5) / 2 - (font_w * alt_size);
-  int time_y = 40;
+  //Wifi
+  int wifiSize = 30;
+  if (WiFi.status() != WL_CONNECTED) {
+    tft.drawBitmap(185, 8, wifidis, wifiSize, wifiSize, ST77XX_WHITE);
+  } else {
+    tft.drawBitmap(185, 8, wifi, wifiSize, wifiSize, ST77XX_WHITE);
+  }
 
-  tft.setCursor(time_x, time_y);
-  tft.println(current_time);
-  tft.setTextSize(alt_size);
-  tft.setCursor((time_x + (font_w * time_size) * 5), time_y);
-  tft.println(alternative);
-  tft.drawBitmap((time_x + (font_w * time_size) * 4 + 14), (time_y + (font_h * time_size) + padding), wifi, 31, 24, ST77XX_WHITE);
-  tft.setTextSize(day_size);
-  tft.setCursor(20, time_y + (font_h * time_size) + padding + 10);
+  //Date
+  tft.setTextSize(4);
+  tft.setCursor(160, 45);
   tft.println(weekDay);
-  tft.setCursor(20, time_y + (font_h * time_size) + (font_h * day_size) + padding * 2 + 10);
-  tft.println(day);
-  tft.setCursor(20 + (font_w * day_size) * 2 + padding, time_y + (font_h * time_size) + (font_h * day_size) + padding * 2 + 10);
+  tft.setTextSize(3);
+  tft.setCursor(160, 85);
+  tft.print(day);
+  tft.print("/");
   tft.println(month);
-  tft.setTextSize(4);
-  tft.setCursor(20, time_y + (font_h * time_size) + (font_h * day_size) * 2 + padding * 3 + 10);
-  tft.println(year);
-  int temp_x = display_w - (font_w * 4) * 2 - padding - (font_w * alt_size);
-  tft.setCursor(temp_x, time_y + (font_h * time_size) + (font_h * day_size) + padding * 2 + 10);
-  tft.println(temp);
-  tft.setTextSize(alt_size);
-  tft.setCursor(temp_x + (font_w * 4) * 2, time_y + (font_h * time_size) + (font_h * day_size) + padding * 2 + 10);
-  tft.println("o");
-  tft.setTextSize(4);
-  tft.setCursor(temp_x + 10, time_y + (font_h * time_size) + (font_h * day_size) * 2 + padding * 3 + 10);
-  tft.println("C");
+
+  //Weather
+  tft.setTextSize(3);
+  tft.drawLine(157, 120, 240, 120, ST77XX_GREEN);
+  tft.setCursor(160, 135);
+  if (temp != "") {
+    // if (temp.toInt() > 30) {
+    //   tft.setTextColor(ST77XX_ORANGE);
+    // } else if (temp.toInt() < 30 & temp.toInt() > 24) {
+    //   tft.setTextColor(ST77XX_GREEN);
+    // } else {
+    //   tft.setTextColor(ST77XX_CYAN);
+    // }
+    tft.print(temp);
+    tft.print(char(247));
+    tft.print("C");
+  } else {
+    tft.setTextColor(ST77XX_WHITE);
+    tft.setTextSize(1);
+    tft.print("No Data");
+  }
+
+  int w_x = 167;
+  int w_y = 167;
+  //Weather icon
+  if (weather.equalsIgnoreCase("clear")){
+    tft.drawBitmap(w_x, w_y, sun, 48, 48, ST77XX_YELLOW);
+  } else if (weather.equalsIgnoreCase("clouds")){
+    tft.drawBitmap(w_x, w_y, cloud, 48, 48, ST77XX_WHITE);
+  } else if (weather.equalsIgnoreCase("rain")){
+    tft.drawBitmap(w_x, w_y, rain, 48, 48, ST77XX_BLUE);
+  } else if (weather.equalsIgnoreCase("drizzle")){
+    tft.drawBitmap(w_x, w_y, drizzle, 48, 48, ST77XX_CYAN);
+  } else if (weather.equalsIgnoreCase("thunderstorm")){
+    tft.drawBitmap(w_x, w_y, storm, 48, 48, ST77XX_LIME);
+  } else if (weather.equalsIgnoreCase("atmosphere")){
+    tft.drawBitmap(w_x, w_y, atmos, 48, 48, ST77XX_GRAY);
+  } else if (weather.equalsIgnoreCase("snow")){
+    tft.drawBitmap(w_x, w_y, snow, 48, 48, ST77XX_WHITE);
+  } else {
+    tft.drawBitmap(w_x, w_y, clouderror, 48, 48, ST77XX_RED);
+  } 
+  
+  // // default font size = 6x8px
+  // int font_w = 6;
+  // int font_h = 8;
+
+  // // UI size
+  // int time_size = 6;
+  // int alt_size = 2;
+  // int day_size = 3;
+
+  // // Display WxH
+  // int display_w = 240;
+  // int display_h = 240;
+
+  // // Distance between items
+  // int padding = 8;
+
+  // tft.setTextSize(time_size);  // ie. 6x8 * 5 = 30x40
+  // tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+
+  // // X and Y of time on screen
+  // int time_x = (display_w / 2) - ((font_w * time_size) * 5) / 2 - (font_w * alt_size);
+  // int time_y = 40;
+
+  // tft.setCursor(time_x, time_y);
+  // tft.println(current_time);
+  // tft.setTextSize(alt_size);
+  // tft.setCursor((time_x + (font_w * time_size) * 5), time_y);
+  // tft.println(alternative);
+  // tft.drawBitmap((time_x + (font_w * time_size) * 4 + 14), (time_y + (font_h * time_size) + padding), wifi, 31, 24, ST77XX_WHITE);
+  // tft.setTextSize(day_size);
+  // tft.setCursor(20, time_y + (font_h * time_size) + padding + 10);
+  // tft.println(weekDay);
+  // tft.setCursor(20, time_y + (font_h * time_size) + (font_h * day_size) + padding * 2 + 10);
+  // tft.println(day);
+  // tft.setCursor(20 + (font_w * day_size) * 2 + padding, time_y + (font_h * time_size) + (font_h * day_size) + padding * 2 + 10);
+  // tft.println(month);
+  // tft.setTextSize(4);
+  // tft.setCursor(20, time_y + (font_h * time_size) + (font_h * day_size) * 2 + padding * 3 + 10);
+  // tft.println(year);
+  // int temp_x = display_w - (font_w * 4) * 2 - padding - (font_w * alt_size);
+  // tft.setCursor(temp_x, time_y + (font_h * time_size) + (font_h * day_size) + padding * 2 + 10);
+  // tft.println(temp);
+  // tft.setTextSize(alt_size);
+  // tft.setCursor(temp_x + (font_w * 4) * 2, time_y + (font_h * time_size) + (font_h * day_size) + padding * 2 + 10);
+  // tft.println("o");
+  // tft.setTextSize(4);
+  // tft.setCursor(temp_x + 10, time_y + (font_h * time_size) + (font_h * day_size) * 2 + padding * 3 + 10);
+  // tft.println("C");
 }
 
 // Formatting and setting time
@@ -209,16 +283,16 @@ void currentTime() {
   struct tm *ptm = gmtime((time_t *)&epochTime);
   day = ptm->tm_mday;
   int current_month = ptm->tm_mon + 1;
-  month = months[current_month - 1];
+  month = String(current_month);
   year = ptm->tm_year + 1900;
-  if (hour.toInt() >= 12) {
-    alternative = "PM";
-  } else {
-    alternative = "AM";
-  }
-  if (hour.toInt() > 12) {
-    hour = map(hour.toInt(), 13, 24, 1, 12);
-  }
+  // if (hour.toInt() >= 12) {
+  //   alternative = "PM";
+  // } else {
+  //   alternative = "AM";
+  // }
+  // if (hour.toInt() > 12) {
+  //   hour = map(hour.toInt(), 13, 24, 1, 12);
+  // }
   if (hour.toInt() < 10) {
     hour = "0" + hour;
   }
