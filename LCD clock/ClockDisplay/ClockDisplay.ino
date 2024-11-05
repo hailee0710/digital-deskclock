@@ -7,6 +7,8 @@
 #include <ArduinoJson.h>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
 #include "bitmaps.h"
 
 //ESP82266 Board Manager - https://arduino.esp8266.com/stable/package_esp8266com_index.json
@@ -20,18 +22,24 @@
 #define TFT_CS 15
 #define TFT_DC 4
 #define TFT_RST 2
-#define TFT_BL 5
+// TEMP PIN
+#define ONE_WIRE_BUS 2
+//Button PIN
+#define BUTTON_PIN D3
+#define BL_PIN D0
 
 #define ST77XX_LIME 0x07FF
 #define ST77XX_GRAY 0x8410
+
+//Setup indoor temp
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
 
 // Display and WiFiUdp
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 WiFiUDP ntpUDP;
 
 // NTP pool link:-
-// in.pool.ntp.org is for India
-// You can visit pool.ntp.org to find your server
 NTPClient timeClient(ntpUDP, "0.vn.pool.ntp.org");
 
 // Latitude and Longitude of you location.
@@ -49,13 +57,13 @@ String minute;
 String alternative;
 String weekDay;
 String month;
-int day;
+String day;
 int year;
 String temp;
 String weather;
+float indoorTemp;
 
-#define BUTTON_PIN D3
-#define BL_PIN D0  // Button connected to D3 (GPIO0)
+
 int buttonState = 0;
 bool displayOn = true;
 int brightness = 255;  // Full brightness (255 = 100% duty cycle)
@@ -67,7 +75,7 @@ String months[12] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "S
 
 // For delay in fetching weather data.
 unsigned long lastTime = 0;
-unsigned long fetch_delay = 10800000;
+unsigned long fetch_delay = 1800000;
 
 void setup(void) {
   pinMode(BUTTON_PIN, INPUT_PULLUP);  // Configure button pin as input with internal pull-up
@@ -77,6 +85,7 @@ void setup(void) {
   analogWrite(BL_PIN, brightness);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   timeClient.begin();
+  sensors.begin();
 
   // Set this to you timezone in seconds i.e 5:30 = 19800 seconds;
   timeClient.setTimeOffset(25200);
@@ -130,6 +139,7 @@ void loop() {
   // Fetching weather after delay
   if ((millis() - lastTime) > fetch_delay) {
     fetchTemp();
+    getIndoorTemp();
     lastTime = millis();
   }
   display();
@@ -165,12 +175,12 @@ void display() {
   tft.println(minute);
 
   //Wifi
-  int wifiSize = 30;
-  if (WiFi.status() != WL_CONNECTED) {
-    tft.drawBitmap(185, 8, wifidis, wifiSize, wifiSize, ST77XX_WHITE);
-  } else {
-    tft.drawBitmap(185, 8, wifi, wifiSize, wifiSize, ST77XX_WHITE);
-  }
+  // int wifiSize = 30;
+  // if (WiFi.status() != WL_CONNECTED) {
+  //   tft.drawBitmap(185, 8, wifidis, wifiSize, wifiSize, ST77XX_WHITE);
+  // } else {
+  //   tft.drawBitmap(185, 8, wifi, wifiSize, wifiSize, ST77XX_WHITE);
+  // }
 
   //Date
   tft.setTextSize(4);
@@ -207,13 +217,17 @@ void display() {
   int w_y = 167;
   //Weather icon
   if (weather.equalsIgnoreCase("clear")){
-    tft.drawBitmap(w_x, w_y, sun, 48, 48, ST77XX_YELLOW);
+    if (hour.toInt() > 19 | hour.toInt() < 6) {
+      tft.drawBitmap(w_x, w_y, sun, 48, 48, ST77XX_YELLOW);
+    } else {
+      tft.drawBitmap(w_x, w_y, moon, 48, 48, ST77XX_WHITE);
+    }
   } else if (weather.equalsIgnoreCase("clouds")){
     tft.drawBitmap(w_x, w_y, cloud, 48, 48, ST77XX_WHITE);
   } else if (weather.equalsIgnoreCase("rain")){
-    tft.drawBitmap(w_x, w_y, rain, 48, 48, ST77XX_BLUE);
+    tft.drawBitmap(w_x, w_y, rain, 48, 48, ST77XX_WHITE);
   } else if (weather.equalsIgnoreCase("drizzle")){
-    tft.drawBitmap(w_x, w_y, drizzle, 48, 48, ST77XX_CYAN);
+    tft.drawBitmap(w_x, w_y, drizzle, 48, 48, ST77XX_WHITE);
   } else if (weather.equalsIgnoreCase("thunderstorm")){
     tft.drawBitmap(w_x, w_y, storm, 48, 48, ST77XX_LIME);
   } else if (weather.equalsIgnoreCase("atmosphere")){
@@ -223,55 +237,10 @@ void display() {
   } else {
     tft.drawBitmap(w_x, w_y, clouderror, 48, 48, ST77XX_RED);
   } 
+
+  //Indoor temp
   
-  // // default font size = 6x8px
-  // int font_w = 6;
-  // int font_h = 8;
-
-  // // UI size
-  // int time_size = 6;
-  // int alt_size = 2;
-  // int day_size = 3;
-
-  // // Display WxH
-  // int display_w = 240;
-  // int display_h = 240;
-
-  // // Distance between items
-  // int padding = 8;
-
-  // tft.setTextSize(time_size);  // ie. 6x8 * 5 = 30x40
-  // tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
-
-  // // X and Y of time on screen
-  // int time_x = (display_w / 2) - ((font_w * time_size) * 5) / 2 - (font_w * alt_size);
-  // int time_y = 40;
-
-  // tft.setCursor(time_x, time_y);
-  // tft.println(current_time);
-  // tft.setTextSize(alt_size);
-  // tft.setCursor((time_x + (font_w * time_size) * 5), time_y);
-  // tft.println(alternative);
-  // tft.drawBitmap((time_x + (font_w * time_size) * 4 + 14), (time_y + (font_h * time_size) + padding), wifi, 31, 24, ST77XX_WHITE);
-  // tft.setTextSize(day_size);
-  // tft.setCursor(20, time_y + (font_h * time_size) + padding + 10);
-  // tft.println(weekDay);
-  // tft.setCursor(20, time_y + (font_h * time_size) + (font_h * day_size) + padding * 2 + 10);
-  // tft.println(day);
-  // tft.setCursor(20 + (font_w * day_size) * 2 + padding, time_y + (font_h * time_size) + (font_h * day_size) + padding * 2 + 10);
-  // tft.println(month);
-  // tft.setTextSize(4);
-  // tft.setCursor(20, time_y + (font_h * time_size) + (font_h * day_size) * 2 + padding * 3 + 10);
-  // tft.println(year);
-  // int temp_x = display_w - (font_w * 4) * 2 - padding - (font_w * alt_size);
-  // tft.setCursor(temp_x, time_y + (font_h * time_size) + (font_h * day_size) + padding * 2 + 10);
-  // tft.println(temp);
-  // tft.setTextSize(alt_size);
-  // tft.setCursor(temp_x + (font_w * 4) * 2, time_y + (font_h * time_size) + (font_h * day_size) + padding * 2 + 10);
-  // tft.println("o");
-  // tft.setTextSize(4);
-  // tft.setCursor(temp_x + 10, time_y + (font_h * time_size) + (font_h * day_size) * 2 + padding * 3 + 10);
-  // tft.println("C");
+  
 }
 
 // Formatting and setting time
@@ -281,18 +250,15 @@ void currentTime() {
   weekDay = weekDays[timeClient.getDay()];
   time_t epochTime = timeClient.getEpochTime();
   struct tm *ptm = gmtime((time_t *)&epochTime);
-  day = ptm->tm_mday;
+  int d = ptm->tm_mday;
   int current_month = ptm->tm_mon + 1;
   month = String(current_month);
   year = ptm->tm_year + 1900;
-  // if (hour.toInt() >= 12) {
-  //   alternative = "PM";
-  // } else {
-  //   alternative = "AM";
-  // }
-  // if (hour.toInt() > 12) {
-  //   hour = map(hour.toInt(), 13, 24, 1, 12);
-  // }
+  if (d < 10) {
+    day = "0" + String(d);
+  } else {
+    day = String(d);
+  }
   if (hour.toInt() < 10) {
     hour = "0" + hour;
   }
@@ -328,4 +294,9 @@ void fetchTemp() {
     }
   }
   https.end();
+}
+
+void getIndoorTemp() {
+  sensors.requestTemperatures(); 
+  indoorTemp = sensors.getTempCByIndex(0);
 }
