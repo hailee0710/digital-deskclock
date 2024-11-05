@@ -23,7 +23,7 @@
 #define TFT_DC 4
 #define TFT_RST 2
 // TEMP PIN
-#define ONE_WIRE_BUS 2
+#define ONE_WIRE_BUS 2 //TO BE UPDATED
 //Button PIN
 #define BUTTON_PIN D3
 #define BL_PIN D0
@@ -148,7 +148,7 @@ void loop() {
 
   if (buttonState == LOW) {  // Button is pressed (LOW because of pull-up)
     // Displaying items.
-    delay(200);
+    //delay(200);
     dimmed = !dimmed;
 
     // Set brightness based on the dimmed state
