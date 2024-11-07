@@ -23,10 +23,10 @@
 #define TFT_DC 4
 #define TFT_RST 2
 // TEMP PIN
-#define ONE_WIRE_BUS 2 //TO BE UPDATED
+#define ONE_WIRE_BUS 1 //TX
 //Button PIN
-#define BUTTON_PIN D3
-#define BL_PIN D0
+#define BUTTON_PIN 0
+#define BL_PIN 16
 
 #define ST77XX_LIME 0x07FF
 #define ST77XX_GRAY 0x8410
