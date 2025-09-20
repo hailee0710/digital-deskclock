@@ -7,8 +7,9 @@
 #include <ArduinoJson.h>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
-#include <OneWire.h>
-#include <DallasTemperature.h>
+#include <Adafruit_Sensor.h>
+#include <DHT.h>
+#include <DHT_U.h>
 #include "bitmaps.h"
 
 //ESP82266 Board Manager - https://arduino.esp8266.com/stable/package_esp8266com_index.json
@@ -22,8 +23,9 @@
 #define TFT_CS 15
 #define TFT_DC 4
 #define TFT_RST 2
-// TEMP PIN
-#define ONE_WIRE_BUS 1 //TX
+// Define DHT type and GPIO pin
+#define DHTPIN 12  // GPIO 12 (D6 on Wemos D1 Mini)
+#define DHTTYPE DHT22
 //Button PIN
 #define BUTTON_PIN 0
 #define BL_PIN 16
@@ -32,8 +34,8 @@
 #define ST77XX_GRAY 0x8410
 
 //Setup indoor temp
-OneWire oneWire(ONE_WIRE_BUS);
-DallasTemperature sensors(&oneWire);
+// Initialize DHT sensor
+DHT dht(DHTPIN, DHTTYPE);
 
 // Display and WiFiUdp
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
@@ -85,7 +87,7 @@ void setup(void) {
   analogWrite(BL_PIN, brightness);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   timeClient.begin();
-  sensors.begin();
+  dht.begin();
 
   // Set this to you timezone in seconds i.e 5:30 = 19800 seconds;
   timeClient.setTimeOffset(25200);
@@ -129,6 +131,10 @@ void setup(void) {
   // Clear display and fetch tempurature
   tft.fillRect(60, 110, 130, 50, ST77XX_BLACK);
   fetchTemp();
+  getIndoorTemp();
+  currentTime();
+  tft.drawLine(157, 133, 240, 133, ST77XX_LIME);
+  tft.drawLine(157, 63, 240, 63, ST77XX_LIME);
 }
 
 
@@ -144,23 +150,13 @@ void loop() {
   }
   display();
 
-  buttonState = digitalRead(BUTTON_PIN);  // Read the state of the button
-
-  if (buttonState == LOW) {  // Button is pressed (LOW because of pull-up)
-    // Displaying items.
-    //delay(200);
+  // Check button for brightness toggle
+  if (digitalRead(BUTTON_PIN) == LOW) {
+    Serial.println("Low");
     dimmed = !dimmed;
-
-    // Set brightness based on the dimmed state
-    if (dimmed) {
-      brightness = 1;  // Dimmed brightness (adjust this value)
-    } else {
-      brightness = 255;  // Full brightness
-    }
-
-    // Apply brightness to backlight
+    brightness = dimmed ? 1 : 255;
     analogWrite(BL_PIN, brightness);
-    delay(200);
+    delay(200); // Debounce delay
   }
 }
 
@@ -182,65 +178,16 @@ void display() {
   //   tft.drawBitmap(185, 8, wifi, wifiSize, wifiSize, ST77XX_WHITE);
   // }
 
+
   //Date
-  tft.setTextSize(4);
-  tft.setCursor(160, 45);
+  tft.setTextSize(3);
+  tft.setCursor(170, 5);
   tft.println(weekDay);
   tft.setTextSize(2);
-  tft.setCursor(168, 88);
+  tft.setCursor(168, 38);
   tft.print(day);
   tft.print("/");
   tft.println(month);
-
-  //Weather
-  tft.setTextSize(3);
-  tft.drawLine(157, 120, 240, 120, ST77XX_GREEN);
-  tft.setCursor(160, 135);
-  if (temp != "") {
-    // if (temp.toInt() > 30) {
-    //   tft.setTextColor(ST77XX_ORANGE);
-    // } else if (temp.toInt() < 30 & temp.toInt() > 24) {
-    //   tft.setTextColor(ST77XX_GREEN);
-    // } else {
-    //   tft.setTextColor(ST77XX_CYAN);
-    // }
-    tft.print(temp);
-    tft.print(char(247));
-    tft.print("C");
-  } else {
-    tft.setTextColor(ST77XX_WHITE);
-    tft.setTextSize(1);
-    tft.print("No Data");
-  }
-
-  int w_x = 167;
-  int w_y = 167;
-  //Weather icon
-  if (weather.equalsIgnoreCase("clear")){
-    if (hour.toInt() > 19 | hour.toInt() < 6) {
-      tft.drawBitmap(w_x, w_y, sun, 48, 48, ST77XX_YELLOW);
-    } else {
-      tft.drawBitmap(w_x, w_y, moon, 48, 48, ST77XX_WHITE);
-    }
-  } else if (weather.equalsIgnoreCase("clouds")){
-    tft.drawBitmap(w_x, w_y, cloud, 48, 48, ST77XX_WHITE);
-  } else if (weather.equalsIgnoreCase("rain")){
-    tft.drawBitmap(w_x, w_y, rain, 48, 48, ST77XX_WHITE);
-  } else if (weather.equalsIgnoreCase("drizzle")){
-    tft.drawBitmap(w_x, w_y, drizzle, 48, 48, ST77XX_WHITE);
-  } else if (weather.equalsIgnoreCase("thunderstorm")){
-    tft.drawBitmap(w_x, w_y, storm, 48, 48, ST77XX_LIME);
-  } else if (weather.equalsIgnoreCase("atmosphere")){
-    tft.drawBitmap(w_x, w_y, atmos, 48, 48, ST77XX_GRAY);
-  } else if (weather.equalsIgnoreCase("snow")){
-    tft.drawBitmap(w_x, w_y, snow, 48, 48, ST77XX_WHITE);
-  } else {
-    tft.drawBitmap(w_x, w_y, clouderror, 48, 48, ST77XX_RED);
-  } 
-
-  //Indoor temp
-  
-  
 }
 
 // Formatting and setting time
@@ -252,7 +199,11 @@ void currentTime() {
   struct tm *ptm = gmtime((time_t *)&epochTime);
   int d = ptm->tm_mday;
   int current_month = ptm->tm_mon + 1;
-  month = String(current_month);
+   if (current_month < 10) {
+    month = "0" + String(current_month);
+  } else {
+    month = String(current_month);
+  }
   year = ptm->tm_year + 1900;
   if (d < 10) {
     day = "0" + String(d);
@@ -294,9 +245,82 @@ void fetchTemp() {
     }
   }
   https.end();
+  tft.fillRect(167, 180, 48, 48, ST77XX_BLACK);
+  //Weather
+  tft.setTextSize(4);
+  tft.setCursor(170, 145);
+  if (temp != "") {
+    // if (temp.toInt() > 30) {
+    //   tft.setTextColor(ST77XX_ORANGE);
+    // } else if (temp.toInt() < 30 & temp.toInt() > 24) {
+    //   tft.setTextColor(ST77XX_GREEN);
+    // } else {
+    //   tft.setTextColor(ST77XX_CYAN);
+    // }
+    tft.print(temp);
+    tft.setTextSize(1);
+    tft.print(char(247));
+    tft.setTextSize(2);
+    tft.print("C");
+  } else {
+    tft.setTextColor(ST77XX_WHITE);
+    tft.setTextSize(1);
+    tft.print("No Data");
+  }
+  int w_x = 167;
+  int w_y = 180;
+  //Weather icon
+  if (weather.equalsIgnoreCase("clear")){
+    if (hour.toInt() > 19 || hour.toInt() < 6) {
+      tft.drawBitmap(w_x, w_y, moon, 48, 48, ST77XX_WHITE);
+    } else {
+      tft.drawBitmap(w_x, w_y, sun, 48, 48, ST77XX_YELLOW);
+    }
+  } else if (weather.equalsIgnoreCase("clouds")){
+    tft.drawBitmap(w_x, w_y, cloud, 48, 48, ST77XX_WHITE);
+  } else if (weather.equalsIgnoreCase("rain")){
+    tft.drawBitmap(w_x, w_y, rain, 48, 48, ST77XX_WHITE);
+  } else if (weather.equalsIgnoreCase("drizzle")){
+    tft.drawBitmap(w_x, w_y, drizzle, 48, 48, ST77XX_WHITE);
+  } else if (weather.equalsIgnoreCase("thunderstorm")){
+    tft.drawBitmap(w_x, w_y, storm, 48, 48, ST77XX_LIME);
+  } else if (weather.equalsIgnoreCase("atmosphere")){
+    tft.drawBitmap(w_x, w_y, atmos, 48, 48, ST77XX_GRAY);
+  } else if (weather.equalsIgnoreCase("snow")){
+    tft.drawBitmap(w_x, w_y, snow, 48, 48, ST77XX_WHITE);
+  } else {
+    tft.drawBitmap(w_x, w_y, clouderror, 48, 48, ST77XX_RED);
+  } 
 }
 
 void getIndoorTemp() {
-  sensors.requestTemperatures(); 
-  indoorTemp = sensors.getTempCByIndex(0);
+  float temperature = dht.readTemperature();  // Read temperature in Celsius
+  float humidity = dht.readHumidity();
+  // Check if the readings are valid
+  if (isnan(temperature) || isnan(humidity)) {
+    Serial.println("Failed to read from DHT sensor!");
+    return;
+  }
+
+  // Print readings to the Serial Monitor
+  Serial.print("Temperature: ");
+  Serial.print(temperature);
+  Serial.println("°C");
+  Serial.print("Humidity: ");
+  Serial.print(humidity);
+  Serial.println("%");
+
+  tft.setTextSize(4);
+  tft.setCursor(170, 70);
+  tft.print((int)temperature);
+  tft.setTextSize(1);
+  tft.print(char(247));
+  tft.setTextSize(2);
+  tft.print("C");
+
+  tft.setTextSize(2);
+  tft.setCursor(175, 110);
+  tft.print((int)humidity);
+  tft.setTextSize(2);
+  tft.print("%");
 }
