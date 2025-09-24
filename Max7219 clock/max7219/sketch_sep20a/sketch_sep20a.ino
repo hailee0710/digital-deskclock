@@ -7,10 +7,9 @@
 #include <time.h>
 #include <DHT.h>
 
-// Custom font from your original project
-#include "mfactoryfont.h" 
 // Timezone lookup from your original project
-#include "tz_lookup.h"      
+#include "tz_lookup.h"  
+#include "mfactoryfont.h"    
 
 // --- HARDCODED SETTINGS ---
 const char* ssid = "Hailee";          // <-- 👈 UPDATE THIS
@@ -66,7 +65,7 @@ void fetchSensorData() {
   }
 
   // Update global variables with new readings
-  currentTemp = String((int)round(t));
+  currentTemp = String(t, 1);
   currentHumidity = String((int)round(h));
   
   Serial.printf("[SENSOR] Temp: %s°C, Humidity: %s%%\n", currentTemp.c_str(), currentHumidity.c_str());
@@ -82,8 +81,8 @@ void setup() {
   // Initialize Display
   P.begin();
   P.setIntensity(0); // Set a moderate brightness (0-15)
-  P.setFont(mFactory);
   P.setCharSpacing(1);
+  P.setFont(mFactory);
   P.displayClear();
   P.print("BOOT");
   Serial.println(F("[SETUP] Display initialized."));
