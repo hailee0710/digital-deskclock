@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Desk Clock Config</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 20px; }
+    .container { max-width: 600px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    h2 { color: #333; }
+    .form-group { margin-bottom: 15px; }
+    label { display: block; margin-bottom: 5px; font-weight: bold; }
+    input[type="text"], input[type="password"], input[type="number"], select {
+      width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;
+    }
+    input[type="checkbox"] { margin-right: 10px; }
+    .btn { background: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+    .btn:hover { background: #0056b3; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .status { margin-top: 15px; padding: 10px; border-radius: 4px; background: #e9ecef; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Desk Clock Configuration</h2>
+    <form id="config-form" action="/save" method="post">
+      <fieldset>
+        <legend><h3>WiFi Settings</h3></legend>
+        <div class="form-group">
+          <label for="ssid">WiFi SSID</label>
+          <input type="text" id="ssid" name="ssid">
+        </div>
+        <div class="form-group">
+          <label for="password">WiFi Password</label>
+          <input type="password" id="password" name="password">
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend><h3>Time & Display</h3></legend>
+        <div class="form-group">
+          <label for="timeZone">Timezone</label>
+          <input type="text" id="timeZone" name="timeZone" placeholder="e.g., America/New_York">
+          <small>See <a href="https://en.wikipedia.org/wiki/List_of_tz_database_time_zones" target="_blank">list of TZ database names</a>.</small>
+        </div>
+        <div class="form-group">
+            <label for="language">Language</label>
+            <input type="text" id="language" name="language" placeholder="e.g., en, de, fr">
+        </div>
+        <div class="grid">
+            <div class="form-group">
+                <label for="clockDuration">Clock Duration (s)</label>
+                <input type="number" id="clockDuration" name="clockDuration">
+            </div>
+            <div class="form-group">
+                <label for="sensorDuration">Sensor Duration (s)</label>
+                <input type="number" id="sensorDuration" name="sensorDuration">
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="brightness">Brightness (0-15)</label>
+            <input type="range" id="brightness" name="brightness" min="0" max="15">
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend><h3>Display Options</h3></legend>
+        <div class="form-group">
+            <input type="checkbox" id="twelveHourToggle" name="twelveHourToggle" value="true">
+            <label for="twelveHourToggle">Use 12-Hour Format</label>
+        </div>
+        <div class="form-group">
+            <input type="checkbox" id="showDayOfWeek" name="showDayOfWeek" value="true">
+            <label for="showDayOfWeek">Show Day of Week</label>
+        </div>
+        <div class="form-group">
+            <input type="checkbox" id="showDate" name="showDate" value="true">
+            <label for="showDate">Show Date</label>
+        </div>
+        <div class="form-group">
+            <input type="checkbox" id="showHumidity" name="showHumidity" value="true">
+            <label for="showHumidity">Show Humidity</label>
+        </div>
+        <div class="form-group">
+            <input type="checkbox" id="colonBlinkEnabled" name="colonBlinkEnabled" value="true">
+            <label for="colonBlinkEnabled">Enable Blinking Colon</label>
+        </div>
+      </fieldset>
+
+      <button type="submit" class="btn">Save and Reboot</button>
+    </form>
+    <div id="status" class="status"></div>
+  </div>
+
+  <script>
+    window.onload = function() {
+      fetch('/config.json')
+        .then(response => response.json())
+        .then(data => {
+          document.getElementById('ssid').value = data.ssid || '';
+          document.getElementById('timeZone').value = data.timeZone || '';
+          document.getElementById('language').value = data.language || 'en';
+          document.getElementById('clockDuration').value = data.clockDuration || 10;
+          document.getElementById('sensorDuration').value = data.sensorDuration || 5;
+          document.getElementById('brightness').value = data.brightness || 7;
+          document.getElementById('twelveHourToggle').checked = data.twelveHourToggle || false;
+          document.getElementById('showDayOfWeek').checked = data.showDayOfWeek === undefined ? true : data.showDayOfWeek;
+          document.getElementById('showDate').checked = data.showDate || false;
+          document.getElementById('showHumidity').checked = data.showHumidity || false;
+          document.getElementById('colonBlinkEnabled').checked = data.colonBlinkEnabled === undefined ? true : data.colonBlinkEnabled;
+        });
+    };
+
+    document.getElementById('config-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const statusDiv = document.getElementById('status');
+        statusDiv.textContent = 'Saving...';
+
+        // Handle checkboxes that might not be sent if unchecked
+        for (const pair of formData.entries()) {
+            if (pair[0].endsWith('Toggle') || pair[0].startsWith('show') || pair[0].endsWith('Enabled')) {
+                // This is already handled by value="true"
+            }
+        }
+        // Manually add unchecked checkboxes
+        document.querySelectorAll('input[type=checkbox]:not(:checked)').forEach(el => {
+            formData.append(el.name, 'false');
+        });
+
+        fetch('/save', {
+            method: 'POST',
+            body: new URLSearchParams(formData)
+        })
+        .then(response => response.text())
+        .then(text => {
+            statusDiv.textContent = text;
+        })
+        .catch(error => {
+            statusDiv.textContent = 'Error saving settings.';
+            console.error('Error:', error);
+        });
+    });
+  </script>
+</body>
+</html>
