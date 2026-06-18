@@ -6,10 +6,10 @@
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 #include <ESP8266WiFi.h>
-#include <ESP8266HTTPClient.h>
 #include <ESPAsyncWebServer.h>
 #include <DNSServer.h>
 #include <LittleFS.h>
+#include "mfactoryfont.h"
 
 // ----------------------
 // --- CONFIGURATION ---
@@ -25,8 +25,8 @@ const char* configFilePath = "/config.json";
 
 // Configuration structure
 struct Config {
-  char ssid[32];
-  char password[64];
+  char ssid[33];      // 32 max + null terminator
+  char password[65];  // 64 max + null terminator
   float latitude;
   float longitude;
   long utcOffsetInSeconds;
@@ -67,15 +67,12 @@ NTPClient timeClient(ntpUDP, "pool.ntp.org", config.utcOffsetInSeconds);
 // ----------------------
 
 char timeString[16] = "";
-char weatherTempString[8] = "";
-char dhtTempHumidString[8] = "";
+char dhtTempHumidString[16] = "";
 
 // Timers for non-blocking updates
 unsigned long lastTimeUpdate = 0;
-unsigned long lastWeatherUpdate = 0;
 unsigned long lastDhtUpdate = 0;
 const long timeUpdateInterval = 10800000; // Update time every 3 hours
-const long weatherUpdateInterval = 10800000; // Update weather every 3 hours
 const long dhtUpdateInterval = 5000; // Update DHT every 5 seconds
 
 // ----------------------
@@ -84,42 +81,90 @@ const long dhtUpdateInterval = 5000; // Update DHT every 5 seconds
 
 // Loads configuration from LittleFS
 bool loadConfig() {
-  if (LittleFS.begin()) {
-    if (LittleFS.exists(configFilePath)) {
-      File configFile = LittleFS.open(configFilePath, "r");
-      if (configFile) {
-        size_t size = configFile.size();
-        std::unique_ptr<char[]> buf(new char[size]);
-        configFile.readBytes(buf.get(), size);
-        DynamicJsonDocument doc(1024);
-        deserializeJson(doc, buf.get());
-        strcpy(config.ssid, doc["ssid"] | "");
-        strcpy(config.password, doc["password"] | "");
-        config.latitude = doc["latitude"] | 0.0;
-        config.longitude = doc["longitude"] | 0.0;
-        config.utcOffsetInSeconds = doc["utcOffsetInSeconds"] | 0;
-        configFile.close();
-        return true;
-      }
-    }
+  if (!LittleFS.begin()) {
+    Serial.println("[CONFIG] LittleFS mount failed!");
+    return false;
   }
-  return false;
+
+  if (!LittleFS.exists(configFilePath)) {
+    Serial.println("[CONFIG] Config file not found, using defaults.");
+    return false;
+  }
+
+  File configFile = LittleFS.open(configFilePath, "r");
+  if (!configFile) {
+    Serial.println("[CONFIG] Failed to open config file for reading.");
+    return false;
+  }
+
+  size_t size = configFile.size();
+  if (size == 0) {
+    Serial.println("[CONFIG] Config file is empty.");
+    configFile.close();
+    return false;
+  }
+
+  // Allocate +1 for null terminator - readBytes does NOT null-terminate
+  std::unique_ptr<char[]> buf(new char[size + 1]);
+  configFile.readBytes(buf.get(), size);
+  buf[size] = '\0';
+  configFile.close();
+
+  DynamicJsonDocument doc(1024);
+  DeserializationError err = deserializeJson(doc, buf.get());
+  if (err) {
+    Serial.printf("[CONFIG] JSON parse error: %s\n", err.c_str());
+    return false;
+  }
+
+  const char* s = doc["ssid"] | "";
+  strncpy(config.ssid, s, sizeof(config.ssid) - 1);
+  config.ssid[sizeof(config.ssid) - 1] = '\0';
+
+  const char* p = doc["password"] | "";
+  strncpy(config.password, p, sizeof(config.password) - 1);
+  config.password[sizeof(config.password) - 1] = '\0';
+
+  config.latitude = doc["latitude"] | 0.0;
+  config.longitude = doc["longitude"] | 0.0;
+  config.utcOffsetInSeconds = doc["utcOffsetInSeconds"] | 0;
+
+  Serial.println("[CONFIG] Configuration loaded successfully.");
+  Serial.printf("  SSID: %s\n", config.ssid);
+  Serial.printf("  UTC offset: %ld\n", config.utcOffsetInSeconds);
+  return true;
 }
 
 // Saves configuration to LittleFS
-void saveConfig() {
-  LittleFS.begin();
-  File configFile = LittleFS.open(configFilePath, "w");
-  if (configFile) {
-    DynamicJsonDocument doc(1024);
-    doc["ssid"] = config.ssid;
-    doc["password"] = config.password;
-    doc["latitude"] = config.latitude;
-    doc["longitude"] = config.longitude;
-    doc["utcOffsetInSeconds"] = config.utcOffsetInSeconds;
-    serializeJson(doc, configFile);
-    configFile.close();
+bool saveConfig() {
+  if (!LittleFS.begin()) {
+    Serial.println("[CONFIG] LittleFS mount failed during save!");
+    return false;
   }
+
+  File configFile = LittleFS.open(configFilePath, "w");
+  if (!configFile) {
+    Serial.println("[CONFIG] Failed to open config file for writing.");
+    return false;
+  }
+
+  DynamicJsonDocument doc(1024);
+  doc["ssid"] = config.ssid;
+  doc["password"] = config.password;
+  doc["latitude"] = config.latitude;
+  doc["longitude"] = config.longitude;
+  doc["utcOffsetInSeconds"] = config.utcOffsetInSeconds;
+
+  size_t written = serializeJson(doc, configFile);
+  configFile.close();
+
+  if (written == 0) {
+    Serial.println("[CONFIG] Failed to write config (0 bytes).");
+    return false;
+  }
+
+  Serial.printf("[CONFIG] Configuration saved (%u bytes).\n", written);
+  return true;
 }
 
 // Handles the root page of the web server
@@ -185,10 +230,12 @@ void handleRoot(AsyncWebServerRequest *request) {
 void handleSave(AsyncWebServerRequest *request) {
   // Save new settings
   if (request->hasArg("ssid")) {
-    strcpy(config.ssid, request->arg("ssid").c_str());
+    strncpy(config.ssid, request->arg("ssid").c_str(), sizeof(config.ssid) - 1);
+    config.ssid[sizeof(config.ssid) - 1] = '\0';
   }
   if (request->hasArg("password")) {
-    strcpy(config.password, request->arg("password").c_str());
+    strncpy(config.password, request->arg("password").c_str(), sizeof(config.password) - 1);
+    config.password[sizeof(config.password) - 1] = '\0';
   }
   if (request->hasArg("latitude")) {
     config.latitude = request->arg("latitude").toFloat();
@@ -200,7 +247,10 @@ void handleSave(AsyncWebServerRequest *request) {
     config.utcOffsetInSeconds = request->arg("utcOffset").toInt();
   }
   
-  saveConfig();
+  if (!saveConfig()) {
+    request->send(500, "text/plain", "Error saving configuration.");
+    return;
+  }
   
   request->send(200, "text/plain", "Configuration saved. Restarting...");
   
@@ -216,21 +266,23 @@ void setup() {
   P.begin();
   P.setIntensity(10);
   P.setPause(0);
+  P.setCharSpacing(1);
+  P.setFont(mFactory);
   P.displayClear();
   P.setZone(0, 0, 1);
-  P.setZone(1, 2, 2);
-  P.setZone(2, 3, 3);
+  P.setZone(1, 2, 3);
   P.setTextAlignment(0, PA_CENTER);
   P.setTextAlignment(1, PA_CENTER);
-  P.setTextAlignment(2, PA_CENTER);
   P.displayZoneText(0, "STARTING", PA_CENTER, 0, 0, PA_SCROLL_LEFT, PA_NO_EFFECT);
   P.displayAnimate();
 
   // Load configuration
   if (!loadConfig()) {
     // Default values if config file not found
-    strcpy(config.ssid, "YOUR_WIFI_SSID");
-    strcpy(config.password, "");
+    strncpy(config.ssid, "YOUR_WIFI_SSID", sizeof(config.ssid) - 1);
+    config.ssid[sizeof(config.ssid) - 1] = '\0';
+    strncpy(config.password, "", sizeof(config.password) - 1);
+    config.password[sizeof(config.password) - 1] = '\0';
     config.latitude = 20.9714;
     config.longitude = 105.7788;
     config.utcOffsetInSeconds = 7 * 3600;
@@ -261,7 +313,6 @@ void setup() {
     timeClient.update();
 
     dht.begin();
-    fetchWeatherData(); // Initial weather fetch
     
   } else {
     // Configuration mode
@@ -293,10 +344,6 @@ void loop() {
       timeClient.update();
       lastTimeUpdate = millis();
     }
-    if (millis() - lastWeatherUpdate > weatherUpdateInterval) {
-      fetchWeatherData();
-      lastWeatherUpdate = millis();
-    }
     if (millis() - lastDhtUpdate > dhtUpdateInterval) {
       readDHT();
       lastDhtUpdate = millis();
@@ -309,10 +356,10 @@ void loop() {
 }
 
 /**
- * @brief Displays all data on the LED matrix.
+ * @brief Displays time and DHT sensor data on the LED matrix.
  *
- * This function handles displaying the time, weather, and DHT
- * readings on their respective zones of the 32-column display.
+ * Zone 0 (modules 0-1): current time
+ * Zone 1 (modules 2-3): DHT temperature and humidity
  */
 void displayData() {
   // Get and format the time
@@ -322,44 +369,10 @@ void displayData() {
 
   // Set the text for each display zone
   P.displayZoneText(0, timeString, PA_CENTER, 0, 100, PA_SCROLL_LEFT, PA_NO_EFFECT);
-  P.displayZoneText(1, weatherTempString, PA_CENTER, 0, 100, PA_SCROLL_LEFT, PA_NO_EFFECT);
-  P.displayZoneText(2, dhtTempHumidString, PA_CENTER, 0, 100, PA_SCROLL_LEFT, PA_NO_EFFECT);
+  P.displayZoneText(1, dhtTempHumidString, PA_CENTER, 0, 100, PA_SCROLL_LEFT, PA_NO_EFFECT);
 
   // Animate the text and update the display
   P.displayAnimate();
-}
-
-/**
- * @brief Fetches temperature and humidity data from Open-Meteo.
- *
- * This function connects to the Open-Meteo API, parses the JSON
- * response, and updates the weatherTempString global variable.
- */
-void fetchWeatherData() {
-  if (WiFi.status() == WL_CONNECTED) {
-    WiFiClient client;
-    HTTPClient http;
-
-    String openMeteoUrl = "https://api.open-meteo.com/v1/forecast?latitude=" + String(config.latitude) + "&longitude=" + String(config.longitude) + "&current=temperature_2m,relative_humidity_2m&forecast_days=1";
-    http.begin(client, openMeteoUrl);
-    int httpCode = http.GET();
-
-    if (httpCode > 0) {
-      String payload = http.getString();
-      DynamicJsonDocument doc(1024);
-      deserializeJson(doc, payload);
-
-      float temp = doc["current"]["temperature_2m"];
-      float humidity = doc["current"]["relative_humidity_2m"];
-      
-      // Format the string to show both temperature and humidity
-      sprintf(weatherTempString, "%.0fC %.0f%%", temp, humidity);
-    } else {
-      Serial.printf("HTTP request failed, error: %s\n", http.errorToString(httpCode).c_str());
-      strcpy(weatherTempString, "ERR");
-    }
-    http.end();
-  }
 }
 
 /**
