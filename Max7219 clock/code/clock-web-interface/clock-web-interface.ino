@@ -74,9 +74,7 @@ String currentTemp = "--";
 int currentHumidity = -1;
 
 // Timers for non-blocking updates
-unsigned long lastTimeUpdate = 0;
 unsigned long lastSensorRead = 0;
-const long timeUpdateInterval = 10800000; // Update time every 3 hours
 const long sensorUpdateInterval = 5000; // Update sensor every 5 seconds
 
 // Display mode switching (full-display, alternating)
@@ -387,7 +385,7 @@ void setup() {
     P.print("CONNECTED");
     
     // Set time offset from loaded config
-    timeClient.setUpdateInterval(60000); // 1 minute update interval for NTP client
+    timeClient.setUpdateInterval(10800000); // 3 hours update interval for NTP client
     timeClient.setTimeOffset(config.utcOffsetInSeconds);
     timeClient.setPoolServerName(config.ntpServer);
     timeClient.begin();
@@ -435,10 +433,7 @@ void setup() {
 void loop() {
   if (WiFi.status() == WL_CONNECTED) {
     // --- NTP Update ---
-    if (millis() - lastTimeUpdate > timeUpdateInterval) {
-      timeClient.update();
-      lastTimeUpdate = millis();
-    }
+    timeClient.update();
 
     // --- Sensor Update ---
     if (millis() - lastSensorRead > sensorUpdateInterval) {
