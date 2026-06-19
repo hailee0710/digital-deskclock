@@ -1,7 +1,7 @@
 #include <SPI.h>
 #include <MD_Parola.h>
 #include <MD_MAX72xx.h>
-#include <DHT.h>
+#include <Adafruit_AHTX0.h>
 #include <ArduinoJson.h>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
@@ -30,6 +30,12 @@ struct Config {
   float latitude;
   float longitude;
   long utcOffsetInSeconds;
+  unsigned long clockDuration;   // seconds to show clock
+  unsigned long sensorDuration;  // seconds to show sensor
+  int brightness;                // MAX7219 intensity (0-15)
+  bool twelveHourToggle;         // true = 12h, false = 24h
+  bool showHumidity;             // show humidity in sensor mode
+  char ntpServer[65];            // NTP server hostname
 };
 Config config;
 
@@ -40,23 +46,19 @@ Config config;
 // MAX7219 pin definitions
 #define HARDWARE_TYPE MD_MAX72XX::FC16_HW
 #define MAX_DEVICES 4 // 8x32 matrix is 4 cascaded 8x8 modules
-#define CS_PIN D6     // ESP8266 D1 Mini pin D6
-#define CLK_PIN D5    // ESP8266 D1 Mini pin D5
-#define DATA_PIN D7   // ESP8266 D1 Mini pin D7
-
-// DHT22 sensor pin
-#define DHT_PIN D4   // ESP8266 D1 Mini pin D4
-#define DHT_TYPE DHT22
+#define CLK_PIN 12   // GPIO12 = D6
+#define DATA_PIN 15  // GPIO15 = D8
+#define CS_PIN 13    // GPIO13 = D7
 
 // ----------------------
 // --- OBJECTS ---
 // ----------------------
 
 // Parola and MAX72xx objects
-MD_Parola P = MD_Parola(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
+MD_Parola P = MD_Parola(HARDWARE_TYPE, DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES);
 
-// DHT sensor object
-DHT dht(DHT_PIN, DHT_TYPE);
+// AHT sensor object
+Adafruit_AHTX0 aht;
 
 // Time client object
 WiFiUDP ntpUDP;
@@ -67,13 +69,19 @@ NTPClient timeClient(ntpUDP, "pool.ntp.org", config.utcOffsetInSeconds);
 // ----------------------
 
 char timeString[16] = "";
-char dhtTempHumidString[16] = "";
+char sensorString[16] = "";
+String currentTemp = "--";
+int currentHumidity = -1;
 
 // Timers for non-blocking updates
 unsigned long lastTimeUpdate = 0;
-unsigned long lastDhtUpdate = 0;
+unsigned long lastSensorRead = 0;
 const long timeUpdateInterval = 10800000; // Update time every 3 hours
-const long dhtUpdateInterval = 5000; // Update DHT every 5 seconds
+const long sensorUpdateInterval = 5000; // Update sensor every 5 seconds
+
+// Display mode switching (full-display, alternating)
+int displayMode = 0;              // 0 = Clock, 1 = Sensor
+unsigned long lastSwitch = 0;
 
 // ----------------------
 // --- FUNCTIONS ---
@@ -128,10 +136,22 @@ bool loadConfig() {
   config.latitude = doc["latitude"] | 0.0;
   config.longitude = doc["longitude"] | 0.0;
   config.utcOffsetInSeconds = doc["utcOffsetInSeconds"] | 0;
+  config.clockDuration = doc["clockDuration"] | 10;
+  config.sensorDuration = doc["sensorDuration"] | 5;
+  config.brightness = doc["brightness"] | 7;
+  config.twelveHourToggle = doc["twelveHourToggle"] | false;
+  config.showHumidity = doc["showHumidity"] | false;
+  const char* ntp = doc["ntpServer"] | "pool.ntp.org";
+  strncpy(config.ntpServer, ntp, sizeof(config.ntpServer) - 1);
+  config.ntpServer[sizeof(config.ntpServer) - 1] = '\0';
 
   Serial.println("[CONFIG] Configuration loaded successfully.");
   Serial.printf("  SSID: %s\n", config.ssid);
   Serial.printf("  UTC offset: %ld\n", config.utcOffsetInSeconds);
+  Serial.printf("  Clock duration: %lu s\n", config.clockDuration);
+  Serial.printf("  Sensor duration: %lu s\n", config.sensorDuration);
+  Serial.printf("  Brightness: %d\n", config.brightness);
+  Serial.printf("  12h toggle: %s\n", config.twelveHourToggle ? "on" : "off");
   return true;
 }
 
@@ -154,6 +174,12 @@ bool saveConfig() {
   doc["latitude"] = config.latitude;
   doc["longitude"] = config.longitude;
   doc["utcOffsetInSeconds"] = config.utcOffsetInSeconds;
+  doc["clockDuration"] = config.clockDuration;
+  doc["sensorDuration"] = config.sensorDuration;
+  doc["brightness"] = config.brightness;
+  doc["twelveHourToggle"] = config.twelveHourToggle;
+  doc["showHumidity"] = config.showHumidity;
+  doc["ntpServer"] = config.ntpServer;
 
   size_t written = serializeJson(doc, configFile);
   configFile.close();
@@ -211,6 +237,30 @@ void handleRoot(AsyncWebServerRequest *request) {
           <label for="utcOffset">Timezone Offset (seconds from GMT)</label>
           <input type="number" id="utcOffset" name="utcOffset" value="%UTCOFFSET%" required>
         </div>
+        <div class="form-group">
+          <label for="clockDuration">Clock Display Duration (seconds)</label>
+          <input type="number" id="clockDuration" name="clockDuration" value="%CLOCKDURATION%" required>
+        </div>
+        <div class="form-group">
+          <label for="sensorDuration">Sensor Display Duration (seconds)</label>
+          <input type="number" id="sensorDuration" name="sensorDuration" value="%SENSORDURATION%" required>
+        </div>
+        <div class="form-group">
+          <label for="brightness">Brightness (0-15)</label>
+          <input type="number" id="brightness" name="brightness" min="0" max="15" value="%BRIGHTNESS%" required>
+        </div>
+        <div class="form-group">
+          <label for="twelveHourToggle">12-Hour Clock</label>
+          <input type="checkbox" id="twelveHourToggle" name="twelveHourToggle" value="true" %12H_CHECKED%>
+        </div>
+        <div class="form-group">
+          <label for="showHumidity">Show Humidity</label>
+          <input type="checkbox" id="showHumidity" name="showHumidity" value="true" %HUMID_CHECKED%>
+        </div>
+        <div class="form-group">
+          <label for="ntpServer">NTP Server</label>
+          <input type="text" id="ntpServer" name="ntpServer" value="%NTPSERVER%" required>
+        </div>
         <button type="submit">Save & Restart</button>
       </form>
     </div>
@@ -223,6 +273,12 @@ void handleRoot(AsyncWebServerRequest *request) {
   html.replace("%LATITUDE%", String(config.latitude, 6));
   html.replace("%LONGITUDE%", String(config.longitude, 6));
   html.replace("%UTCOFFSET%", String(config.utcOffsetInSeconds));
+  html.replace("%CLOCKDURATION%", String(config.clockDuration));
+  html.replace("%SENSORDURATION%", String(config.sensorDuration));
+  html.replace("%BRIGHTNESS%", String(config.brightness));
+  html.replace("%12H_CHECKED%", config.twelveHourToggle ? "checked" : "");
+  html.replace("%HUMID_CHECKED%", config.showHumidity ? "checked" : "");
+  html.replace("%NTPSERVER%", config.ntpServer);
 
   request->send(200, "text/html", html);
 }
@@ -245,6 +301,27 @@ void handleSave(AsyncWebServerRequest *request) {
   }
   if (request->hasArg("utcOffset")) {
     config.utcOffsetInSeconds = request->arg("utcOffset").toInt();
+  }
+  if (request->hasArg("clockDuration")) {
+    long val = request->arg("clockDuration").toInt();
+    if (val > 0) config.clockDuration = val;
+  }
+  if (request->hasArg("sensorDuration")) {
+    long val = request->arg("sensorDuration").toInt();
+    if (val > 0) config.sensorDuration = val;
+  }
+  if (request->hasArg("brightness")) {
+    int val = request->arg("brightness").toInt();
+    if (val < 0) val = 0;
+    if (val > 15) val = 15;
+    config.brightness = val;
+  }
+  // Checkboxes: only submitted when checked; absent = false
+  config.twelveHourToggle = (request->hasArg("twelveHourToggle") && request->arg("twelveHourToggle") == "true");
+  config.showHumidity = (request->hasArg("showHumidity") && request->arg("showHumidity") == "true");
+  if (request->hasArg("ntpServer")) {
+    strncpy(config.ntpServer, request->arg("ntpServer").c_str(), sizeof(config.ntpServer) - 1);
+    config.ntpServer[sizeof(config.ntpServer) - 1] = '\0';
   }
   
   if (!saveConfig()) {
@@ -269,12 +346,7 @@ void setup() {
   P.setCharSpacing(1);
   P.setFont(mFactory);
   P.displayClear();
-  P.setZone(0, 0, 1);
-  P.setZone(1, 2, 3);
-  P.setTextAlignment(0, PA_CENTER);
-  P.setTextAlignment(1, PA_CENTER);
-  P.displayZoneText(0, "STARTING", PA_CENTER, 0, 0, PA_SCROLL_LEFT, PA_NO_EFFECT);
-  P.displayAnimate();
+  P.print("STARTING");
 
   // Load configuration
   if (!loadConfig()) {
@@ -286,7 +358,16 @@ void setup() {
     config.latitude = 20.9714;
     config.longitude = 105.7788;
     config.utcOffsetInSeconds = 7 * 3600;
+    config.clockDuration = 10;
+    config.sensorDuration = 5;
+    config.brightness = 7;
+    config.twelveHourToggle = false;
+    config.showHumidity = false;
+    strncpy(config.ntpServer, "pool.ntp.org", sizeof(config.ntpServer) - 1);
+    config.ntpServer[sizeof(config.ntpServer) - 1] = '\0';
   }
+
+  P.setIntensity(config.brightness);
   
   // Connect to WiFi
   WiFi.mode(WIFI_STA);
@@ -303,23 +384,35 @@ void setup() {
   if (WiFi.status() == WL_CONNECTED) {
     // Normal mode
     Serial.println("WiFi connected.");
-    P.displayZoneText(0, "CONNECTED", PA_CENTER, 0, 0, PA_SCROLL_LEFT, PA_NO_EFFECT);
-    P.displayAnimate();
+    P.print("CONNECTED");
     
     // Set time offset from loaded config
     timeClient.setUpdateInterval(60000); // 1 minute update interval for NTP client
     timeClient.setTimeOffset(config.utcOffsetInSeconds);
+    timeClient.setPoolServerName(config.ntpServer);
     timeClient.begin();
     timeClient.update();
 
-    dht.begin();
+    if (!aht.begin()) {
+      Serial.println("[SENSOR] Could not find AHT sensor!");
+    } else {
+      Serial.println("[SENSOR] AHT sensor found.");
+    }
+
+    // Setup web server for normal mode too
+    server.on("/", handleRoot);
+    server.on("/save", HTTP_POST, handleSave);
+    server.onNotFound([](AsyncWebServerRequest *request){
+      request->redirect("/");
+    });
+    server.begin();
+    Serial.println("Web server started.");
     
   } else {
     // Configuration mode
     Serial.println("Failed to connect to WiFi. Starting configuration mode.");
     
-    P.displayZoneText(0, "SETUP", PA_CENTER, 0, 0, PA_SCROLL_LEFT, PA_NO_EFFECT);
-    P.displayAnimate();
+    P.print("SETUP");
     
     // Start AP
     WiFi.mode(WIFI_AP);
@@ -335,20 +428,54 @@ void setup() {
     server.begin();
     Serial.println("Web server started. Connect to 'esp-display' WiFi.");
   }
+
+  lastSwitch = millis();
 }
 
 void loop() {
   if (WiFi.status() == WL_CONNECTED) {
-    // Normal operation
+    // --- NTP Update ---
     if (millis() - lastTimeUpdate > timeUpdateInterval) {
       timeClient.update();
       lastTimeUpdate = millis();
     }
-    if (millis() - lastDhtUpdate > dhtUpdateInterval) {
-      readDHT();
-      lastDhtUpdate = millis();
+
+    // --- Sensor Update ---
+    if (millis() - lastSensorRead > sensorUpdateInterval) {
+      fetchSensorData();
+      lastSensorRead = millis();
     }
-    displayData();
+
+    // --- Display Mode Switching ---
+    unsigned long currentDuration = (displayMode == 0) ? config.clockDuration : config.sensorDuration;
+    if (millis() - lastSwitch > (currentDuration * 1000)) {
+      advanceDisplayMode();
+    }
+
+    // --- Display Rendering ---
+    if (P.displayAnimate()) {
+      P.setTextAlignment(PA_CENTER);
+
+      if (displayMode == 0) {  // Clock
+        int hours = timeClient.getHours();
+        int minutes = timeClient.getMinutes();
+        if (config.twelveHourToggle) {
+          int hour12 = hours % 12;
+          if (hour12 == 0) hour12 = 12;
+          sprintf(timeString, "%d:%02d", hour12, minutes);
+        } else {
+          sprintf(timeString, "%02d:%02d", hours, minutes);
+        }
+        P.print(timeString);
+      } else {  // Sensor
+        if (config.showHumidity && currentHumidity >= 0) {
+          sprintf(sensorString, "%sC %d%%", currentTemp.c_str(), currentHumidity);
+        } else {
+          strcpy(sensorString, currentTemp.c_str());
+        }
+        P.print(sensorString);
+      }
+    }
   } else {
     // Configuration mode
     dns.processNextRequest();
@@ -356,41 +483,34 @@ void loop() {
 }
 
 /**
- * @brief Displays time and DHT sensor data on the LED matrix.
+ * @brief Advances to the next display mode with a clean transition.
  *
- * Zone 0 (modules 0-1): current time
- * Zone 1 (modules 2-3): DHT temperature and humidity
+ * Modes: 0 = Clock, 1 = Sensor. Clears the display on each switch
+ * so the new text appears cleanly on the full 32-column matrix.
  */
-void displayData() {
-  // Get and format the time
-  int hours = timeClient.getHours();
-  int minutes = timeClient.getMinutes();
-  sprintf(timeString, "%02d:%02d", hours, minutes);
-
-  // Set the text for each display zone
-  P.displayZoneText(0, timeString, PA_CENTER, 0, 100, PA_SCROLL_LEFT, PA_NO_EFFECT);
-  P.displayZoneText(1, dhtTempHumidString, PA_CENTER, 0, 100, PA_SCROLL_LEFT, PA_NO_EFFECT);
-
-  // Animate the text and update the display
-  P.displayAnimate();
+void advanceDisplayMode() {
+  P.displayClear();
+  displayMode = (displayMode == 0) ? 1 : 0;
+  lastSwitch = millis();
+  Serial.printf("[DISPLAY] Switched to mode %d\n", displayMode);
 }
 
 /**
- * @brief Reads temperature and humidity from the DHT22 sensor.
+ * @brief Reads temperature and humidity from the AHT sensor.
  *
- * This function checks for valid readings from the sensor and updates
- * the dhtTempHumidString global variable with the formatted data.
+ * Uses the Adafruit AHTX0 library to read environmental data.
+ * Updates currentTemp and currentHumidity globals on success.
  */
-void readDHT() {
-  float h = dht.readHumidity();
-  float t = dht.readTemperature();
+void fetchSensorData() {
+  sensors_event_t humidity, temp;
+  aht.getEvent(&humidity, &temp);
 
-  if (isnan(h) || isnan(t)) {
-    Serial.println("Failed to read from DHT sensor!");
-    strcpy(dhtTempHumidString, "ERR");
+  if (isnan(temp.temperature) || isnan(humidity.relative_humidity)) {
+    Serial.println("[SENSOR] Failed to read from AHT sensor!");
     return;
   }
 
-  // Format the string as "25C 50%"
-  sprintf(dhtTempHumidString, "%.0fC %.0f%%", t, h);
+  currentTemp = String(temp.temperature, 1);
+  currentHumidity = (int)round(humidity.relative_humidity);
+  Serial.printf("[SENSOR] Temp: %s, Humidity: %d%%\n", currentTemp.c_str(), currentHumidity);
 }
